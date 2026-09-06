@@ -6,7 +6,7 @@ from app.services.adzuna_client import AdzunaClient
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
-@router.post("/fetch")
+@router.get("/fetch")
 async def fetch_and_store_jobs(
     query: str = Query(default="python developer"),
     location: str = Query(default="remote"),
