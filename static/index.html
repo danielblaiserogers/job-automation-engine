@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Job Automation Engine - Control Panel</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen font-sans">
+  <div class="max-w-6xl mx-auto p-6">
+    
+    <!-- Header -->
+    <header class="mb-8 border-b border-gray-800 pb-4 flex justify-between items-center">
+      <div>
+        <h1 class="text-3xl font-bold text-indigo-400">Job Engine Dashboard</h1>
+        <p class="text-gray-400 text-sm mt-1">Aggregator, Search Control & Pipeline Tracker</p>
+      </div>
+      <button onclick="loadStoredJobs()" class="bg-gray-800 hover:bg-gray-700 text-gray-300 px-4 py-2 rounded text-sm transition">
+        🔄 Refresh DB
+      </button>
+    </header>
+
+    <!-- Search Controls -->
+    <div class="bg-gray-800 p-6 rounded-lg shadow-lg mb-8 border border-gray-700">
+      <h2 class="text-xl font-semibold text-gray-200 mb-4">Fetch New Listings</h2>
+      <form id="fetchForm" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-xs font-medium text-gray-400 mb-1">Search Keywords</label>
+          <input type="text" id="query" value="python developer" required
+                 class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white focus:outline-none focus:border-indigo-500">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-400 mb-1">Location / Zip Code</label>
+          <input type="text" id="location" value="remote" required
+                 class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white focus:outline-none focus:border-indigo-500">
+        </div>
+        <div class="flex items-end">
+          <button type="submit" id="submitBtn" 
+                  class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 px-4 rounded transition">
+            Fetch & Store Jobs
+          </button>
+        </div>
+      </form>
+      <div id="statusMessage" class="mt-3 text-sm font-mono hidden"></div>
+    </div>
+
+    <!-- Jobs Table -->
+    <div class="bg-gray-800 rounded-lg shadow-lg border border-gray-700 overflow-hidden">
+      <div class="p-4 border-b border-gray-700 flex justify-between items-center">
+        <h2 class="text-xl font-semibold text-gray-200">Stored Job Listings</h2>
+        <span id="jobCount" class="text-xs bg-indigo-900 text-indigo-300 px-2.5 py-1 rounded-full">0 Records</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm text-gray-300">
+          <thead class="bg-gray-900 text-gray-400 uppercase text-xs">
+            <tr>
+              <th class="py-3 px-4">Title</th>
+              <th class="py-3 px-4">Company</th>
+              <th class="py-3 px-4">Location</th>
+              <th class="py-3 px-4">Source</th>
+              <th class="py-3 px-4 text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody id="jobsTableBody" class="divide-y divide-gray-700">
+            <tr>
+              <td colspan="5" class="text-center py-6 text-gray-500">No jobs loaded yet. Click "Refresh DB" or run a search.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const API_BASE = "http://127.0.0.1:8000/api/v1/jobs";
+
+    // Fetch live jobs from FastAPI DB
+    async function loadStoredJobs() {
+      try {
+        const res = await fetch(`${API_BASE}/`);
+        const jobs = await res.json();
+        const tbody = document.getElementById("jobsTableBody");
+        document.getElementById("jobCount").innerText = `${jobs.length} Records`;
+
+        if (jobs.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="5" class="text-center py-6 text-gray-500">No jobs found in database.</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = jobs.map(job => `
+          <tr class="hover:bg-gray-750 transition border-b border-gray-800">
+            <td class="py-3 px-4 font-medium text-white">${job.title}</td>
+            <td class="py-3 px-4 text-gray-300">${job.company}</td>
+            <td class="py-3 px-4 text-gray-400">${job.location}</td>
+            <td class="py-3 px-4"><span class="text-xs bg-gray-700 text-gray-300 px-2 py-0.5 rounded">${job.source_api}</span></td>
+            <td class="py-3 px-4 text-right">
+              <a href="${job.url}" target="_blank" class="text-indigo-400 hover:text-indigo-300 text-xs font-semibold">View Listing ↗</a>
+            </td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        console.error("Failed to fetch jobs from database:", err);
+      }
+    }
+
+    // Trigger API Fetch from Adzuna
+    document.getElementById("fetchForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const query = document.getElementById("query").value;
+      const location = document.getElementById("location").value;
+      const statusDiv = document.getElementById("statusMessage");
+      const submitBtn = document.getElementById("submitBtn");
+
+      statusDiv.classList.remove("hidden");
+      statusDiv.className = "mt-3 text-sm font-mono text-yellow-400";
+      statusDiv.innerText = "Querying upstream API and processing listings...";
+      submitBtn.disabled = true;
+
+      try {
+        const res = await fetch(`${API_BASE}/fetch?query=${encodeURIComponent(query)}&location=${encodeURIComponent(location)}`, {
+          method: 'POST'
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+          statusDiv.className = "mt-3 text-sm font-mono text-green-400";
+          statusDiv.innerText = `Success! Added ${data.new_jobs_added} new unique job(s) to SQLite database.`;
+          loadStoredJobs();
+        } else {
+          statusDiv.className = "mt-3 text-sm font-mono text-red-400";
+          statusDiv.innerText = `Error: ${data.detail || "Failed to fetch jobs"}`;
+        }
+      } catch (err) {
+        statusDiv.className = "mt-3 text-sm font-mono text-red-400";
+        statusDiv.innerText = `Connection Error: ${err.message}`;
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+
+    // Load stored listings on page boot
+    loadStoredJobs();
+  </script>
+</body>
+</html>
